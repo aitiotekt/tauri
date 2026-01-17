@@ -191,6 +191,14 @@ pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
     .output_ok()
     .context("lib4bin command failed to run.")?;
 
+  // Preserve resource files before removing usr/ directory
+  // Resources are stored in usr/lib/{{package_name}}/
+  let resource_src = app_dir_path.join("usr/lib").join(settings.product_name());
+  if resource_src.exists() {
+    let resource_dst = app_dir_path.join("lib").join(settings.product_name());
+    fs_utils::copy_dir(&resource_src, &resource_dst)?;
+  }
+
   fs_utils::remove_dir_all(&app_dir_path.join("usr/"))?;
 
   let sharun = app_dir_path.join("sharun");
@@ -271,13 +279,13 @@ fn prepare_tools(
   let uruntime = tools_path.join(format!("uruntime-appimage-{fstype}-{arch}"));
   if !uruntime.exists() {
     let data = download(&format!("https://github.com/VHSgunzo/uruntime/releases/download/v0.4.5/uruntime-appimage-{fstype}-{arch}"))?;
-    write_and_make_executable(&uruntime, data)?;
+    write_and_make_executable(&uruntime, &data)?;
   }
 
   let uruntime_lite = tools_path.join(format!("uruntime-appimage-{fstype}-lite-{arch}"));
   if !uruntime_lite.exists() {
     let data = download(&format!("https://github.com/VHSgunzo/uruntime/releases/download/v0.4.5/uruntime-appimage-{fstype}-lite-{arch}"))?;
-    write_and_make_executable(&uruntime_lite, data)?;
+    write_and_make_executable(&uruntime_lite, &data)?;
   }
 
   let sharun_aio = tools_path.join(format!("sharun-{arch}-aio"));
@@ -285,7 +293,7 @@ fn prepare_tools(
     let data = download(&format!(
       "https://github.com/VHSgunzo/sharun/releases/download/v0.7.4/sharun-{arch}-aio"
     ))?;
-    write_and_make_executable(&sharun_aio, data)?;
+    write_and_make_executable(&sharun_aio, &data)?;
   }
 
   Ok((sharun_aio, uruntime, uruntime_lite))
