@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use cargo_mobile2::opts::{NoiseLevel, Profile};
 use clap::{ArgAction, Parser};
@@ -10,6 +11,7 @@ use clap::{ArgAction, Parser};
 use super::{device_prompt, env};
 use crate::{
   error::Context,
+  helpers::config::get_config as get_tauri_config,
   interface::{DevProcess, Interface, WatcherOptions},
   mobile::{DevChild, TargetDevice},
   ConfigValue, Result,
@@ -26,7 +28,7 @@ pub struct Options {
   pub release: bool,
   /// List of cargo features to activate
   #[clap(short, long, action = ArgAction::Append, num_args(0..))]
-  pub features: Option<Vec<String>>,
+  pub features: Vec<String>,
   /// JSON strings or paths to JSON, JSON5 or TOML files to merge with the default configuration file
   ///
   /// Configurations are merged in the order they are provided, which means a particular value overwrites previous values when a config key-value pair conflicts.
@@ -73,11 +75,13 @@ pub fn command(options: Options, noise_level: NoiseLevel) -> Result<()> {
     }
   };
 
+  let dirs = crate::helpers::app_paths::resolve_dirs();
+
   let mut built_application = super::build::command(
     super::build::Options {
       debug: !options.release,
       targets: Some(vec![]), /* skips IPA build since there's no target */
-      features: None,
+      features: Vec::new(),
       config: options.config.clone(),
       build_number: None,
       open: options.open,
@@ -91,7 +95,15 @@ pub fn command(options: Options, noise_level: NoiseLevel) -> Result<()> {
       }),
     },
     noise_level,
+    &dirs,
   )?;
+
+  let cfg = get_tauri_config(
+    tauri_utils::platform::Target::Ios,
+    &options.config.iter().map(|c| &c.0).collect::<Vec<_>>(),
+    dirs.tauri,
+  )?;
+  let tauri_config = Mutex::new(cfg);
 
   // options.open is handled by the build command
   // so all we need to do here is run the app on the selected device
@@ -117,11 +129,13 @@ pub fn command(options: Options, noise_level: NoiseLevel) -> Result<()> {
       runner()?;
     } else {
       built_application.interface.watch(
+        &tauri_config,
         WatcherOptions {
           config: options.config,
           additional_watch_folders: options.additional_watch_folders,
         },
         runner,
+        &dirs,
       )?;
     }
   }
